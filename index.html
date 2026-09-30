@@ -120,6 +120,9 @@ select,.in{padding:.6rem 1rem;border-radius:99px;border:1px solid var(--blush);b
 #done{position:fixed;inset:0;background:rgba(41,35,31,.6);z-index:150;display:none;place-items:center;padding:1rem}#done.on{display:grid;animation:fade .4s}
 #done div{background:var(--white);padding:2.5rem;border-radius:var(--r);text-align:center;max-width:420px}
 #done h2{color:var(--green);margin-bottom:.5rem}
+[hidden]{display:none!important}
+.wa{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:#1E9E52;color:#fff;text-decoration:none;margin-top:1.2rem}
+.wa:hover{background:#177a40}
 footer{background:var(--brown);color:var(--beige);text-align:center;padding:2.2rem 1rem;font-size:.9rem}
 footer .logo{color:#fff;cursor:default;margin-bottom:.4rem}
 footer #adm{background:none;color:var(--beige);opacity:.5;margin-top:.6rem;text-decoration:underline;font-size:.8rem}
@@ -216,6 +219,12 @@ img{max-width:100%}
 </form></div>
 <h2 class="t" style="font-size:1.6rem">Productos</h2><div id="aProd"></div>
 <h2 class="t" style="font-size:1.6rem">Fotos de la página</h2><div id="aSite"></div>
+<h2 class="t" style="font-size:1.6rem">WhatsApp para pedidos</h2>
+<form id="awa" class="panel" style="display:flex;gap:.7rem;flex-wrap:wrap;align-items:center">
+<input class="in" id="waIn" type="tel" inputmode="numeric" autocomplete="off" placeholder="Ej. 525512345678" aria-label="Número de WhatsApp" style="flex:1;min-width:220px">
+<button class="btn">Guardar número</button>
+<small style="flex-basis:100%;color:#8a7a70">Con código de país y solo números, sin + ni espacios. México: 52 + 10 dígitos. Déjalo vacío para ocultar el botón de WhatsApp.</small>
+</form>
 <h2 class="t" style="font-size:1.6rem">Pedidos</h2><div id="aOrd"></div>
 <button class="btn alt" id="aOut" style="margin-top:1.5rem">Salir del modo administrador</button>
 </div></div></section>
@@ -227,7 +236,10 @@ img{max-width:100%}
 <aside id="drawer"><div style="display:flex;justify-content:space-between;align-items:center"><h3>Tu carrito</h3><button id="cx" style="background:none;font-size:1.5rem" aria-label="Cerrar">✕</button></div>
 <div id="items"></div><div class="sum" id="sum"></div><button class="btn" id="goCo" style="margin-top:.8rem">Finalizar compra</button></aside>
 <div id="toast">✓ Agregado a tu carrito</div>
-<div id="done"><div><h2>¡Pedido confirmado!</h2><p>Gracias por comprar en Jazlin.</p><button class="btn" id="dn" style="margin-top:1.2rem">Seguir comprando</button></div></div>
+<div id="done"><div><h2>¡Pedido confirmado!</h2><p>Gracias por comprar en Jazlin.</p>
+<p id="waNote" hidden style="margin-top:.6rem;font-size:.92rem;color:#6d5d53">Envíanos tu pedido por WhatsApp para coordinar el pago y la entrega.</p>
+<a class="btn wa" id="wa" target="_blank" rel="noopener" hidden>💬 Enviar pedido por WhatsApp</a><br>
+<button class="btn alt" id="dn" style="margin-top:.8rem">Seguir comprando</button></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -390,6 +402,23 @@ function renderCheckout(){
   $('#coSum').innerHTML=`<div><span>Subtotal</span><span>${money(sub)}</span></div><div><span>Envío</span><span>${money(sh)}</span></div><div class="g"><span>Total</span><span>${money(sub+sh)}</span></div>`;
 }
 $$('[name=sh]').forEach(r=>r.onchange=renderCheckout);
+/* ---------- WHATSAPP ---------- */
+// El número se guarda en Supabase (tabla site_settings) y se edita desde el panel de administración.
+// Formato: código de país + número, solo dígitos. Vacío = el botón no aparece.
+let WHATSAPP='';
+const waReady=()=>/^\d{10,15}$/.test(WHATSAPP);
+function waLink(o,items){
+  const lines=items.map(c=>`• ${c.qty}× ${c.name}${c.opt&&c.opt!=='Estándar'?' ('+c.opt+')':''} — ${money(c.price*c.qty)}`);
+  const msg=['Hola Jazlin 🌷, acabo de hacer un pedido en la tienda.','','*Mi pedido*',...lines,'',
+    `Subtotal: ${money(o.subtotal)}`,`Envío (${o.shipping_method}): ${money(o.shipping_cost)}`,`*Total: ${money(o.total)}*`,`Forma de pago: ${o.payment_method}`,'',
+    `Nombre: ${o.customer_name}`,`Teléfono: ${o.phone}`,`Dirección: ${[o.address,o.city,o.state,o.zip].filter(Boolean).join(', ')}`].join('\n');
+  return `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(msg)}`}
+function showDone(o,items){
+  const ok=waReady();
+  $('#wa').hidden=!ok;$('#waNote').hidden=!ok;
+  if(ok)$('#wa').href=waLink(o,items);
+  $('#done').classList.add('on')}
+
 $('#cof').onsubmit=async e=>{e.preventDefault();if(!cart.length){toast('Tu carrito está vacío');return}
   const f=e.target,shv=+document.querySelector('[name=sh]:checked').value,sub=totals().sub,btn=f.querySelector('button.btn');
   const o={id:uuid(),customer_name:f.nm.value,email:f.em.value,phone:f.ph.value,address:f.ad.value,city:f.ci.value,state:f.st.value,zip:f.zp.value,shipping_method:shv>10?'Exprés':'Estándar',shipping_cost:shv,subtotal:sub,total:sub+shv,payment_method:document.querySelector('[name=pay]:checked').value};
@@ -398,10 +427,19 @@ $('#cof').onsubmit=async e=>{e.preventDefault();if(!cart.length){toast('Tu carri
     if(!db)throw new Error('Sin conexión con la tienda');
     let r=await db.from('orders').insert(o);if(r.error)throw r.error;
     r=await db.from('order_items').insert(cart.map(c=>({order_id:o.id,product_id:isU(c.pid)?c.pid:null,product_name:c.name,unit_price:c.price,quantity:c.qty,size:c.size||null,ribbon:c.rib||null})));if(r.error)throw r.error;
-    cart=[];saveCart();f.reset();$('#done').classList.add('on');
+    const items=cart.map(c=>({name:c.name,qty:c.qty,price:c.price,opt:c.opt}));
+    cart=[];saveCart();f.reset();showDone(o,items);
   }catch(err){console.error(err);toast('⚠ No se pudo enviar el pedido. Intenta de nuevo.')}
   btn.disabled=false};
 $('#dn').onclick=()=>{$('#done').classList.remove('on');go('catalog')};
+
+$('#awa').onsubmit=e=>{e.preventDefault();
+  const n=$('#waIn').value.replace(/[\s+\-().]/g,'');
+  if(n&&!/^\d{10,15}$/.test(n)){toast('⚠ Escribe el número con código de país, solo dígitos');return}
+  run(async()=>{
+    const {error}=await db.from('site_settings').upsert({key:'whatsapp',value:n,updated_at:new Date().toISOString()});
+    if(error){if(/site_settings|schema cache|does not exist/i.test(error.message||'')){toast('⚠ Falta crear la tabla site_settings en Supabase');return}throw error}
+    WHATSAPP=n;$('#waIn').value=n;toast(n?'✓ Número de WhatsApp guardado':'✓ Botón de WhatsApp desactivado')})};
 
 /* ---------- ADMINISTRADOR ---------- */
 let editId=null,pend=[];
@@ -451,9 +489,10 @@ function fromRow(r,im){
 async function loadAll(){
   if(!db)return;
   try{
-    const [a,b,c]=await Promise.all([db.from('products').select('*').order('created_at'),db.from('product_images').select('*'),db.from('site_images').select('*')]);
+    const [a,b,c,d]=await Promise.all([db.from('products').select('*').order('created_at'),db.from('product_images').select('*'),db.from('site_images').select('*'),db.from('site_settings').select('*')]);
     if(a.error)throw a.error;
     P=a.data.map(r=>fromRow(r,b.data||[]));site={};(c.data||[]).forEach(x=>site[x.slot]=x.url);
+    if(!d.error){const w=(d.data||[]).find(x=>x.key==='whatsapp');WHATSAPP=w?String(w.value||''):'';const wi=$('#waIn');if(wi&&document.activeElement!==wi)wi.value=WHATSAPP}
     renderGrid();renderStory();
     if($('#admin').classList.contains('on'))renderAdmin();
     if($('#product-detail').classList.contains('on')&&cur.p){const n=P.find(x=>x.id===cur.p.id);if(n){cur.p=n;renderPD()}}
